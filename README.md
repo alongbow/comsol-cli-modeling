@@ -27,7 +27,7 @@ Then ask your agent to build a COMSOL model, or reference the skill explicitly.
 | `references/cad-comsol-windows.md` | Tested CAD → STEP → COMSOL import rules on Windows, plus a symptom → first-fix table for the failures that cost the most time. |
 | `references/phase-change-axisymmetric.md` | PCM / shell-core / 2D axisymmetry checks: liquid-fraction direction, symmetry, monotonicity, energy balance. |
 | `references/validation.md` | Gate order, tolerance selection, figure QA, what counts as convergence evidence. |
-| `scripts/new_comsol_cli_project.ps1` | Scaffolds a runnable project: Java source, runner, prefs dir, `results/`, `figures/`. |
+| `scripts/new_comsol_cli_project.ps1` | Scaffolds a runnable project: Java source, runner, prefs dir, `.gitignore`, `results/`, `figures/`. |
 | `scripts/test_cad_comsol_acoustics.ps1` | Environment preflight: generates a small duct, imports its STEP, solves 200 Hz, exports CSV, asserts nonempty data. Caches a pass for 24 h keyed on a fingerprint of the environment. |
 | `assets/*.template` | Templates the scaffold expands: model class, runner, prefs, acoustic preflight. |
 | `agents/openai.yaml` | Display metadata for agents that surface skills in a menu. |
@@ -55,7 +55,9 @@ powershell -ExecutionPolicy Bypass -File scripts/test_cad_comsol_acoustics.ps1 `
   -ProjectRoot C:\work\acoustics-preflight
 ```
 
-`-ComsolBin` defaults to the standard install root; point it at your own `Multiphysics\bin\win64` if COMSOL lives elsewhere.
+`-ComsolBin` defaults to the standard install root. The generated runner resolves COMSOL in this order: `-ComsolBin` baked in at scaffold time → `$env:COMSOL_BIN` → `comsolcompile.exe` on `PATH` → a probe of the usual install roots. Set `COMSOL_BIN` once per machine to switch versions without regenerating the project.
+
+The scaffold also writes a `.gitignore` covering `*.class`, `*.mph`, `*.log` and `results/` — a solved MPH runs to hundreds of MB, and a stray class file is a correctness hazard, not just noise.
 
 ## The rules that matter
 
@@ -69,6 +71,18 @@ The skill is opinionated because these are the failures that silently produce wr
 - **Check invariants before contour plots:** computed volume/area vs. analytic, axisymmetric weighting on, energy balance, monotonic liquid fraction, mesh/time-step sensitivity.
 - **Keep failed logs.** Do not mix stale outputs into a new run.
 - **Never launch the GUI** unless the user asks for it.
+
+## Verified behaviour
+
+Measured on a real COMSOL 6.3.0.290 install (Windows, PowerShell 5.1), not asserted:
+
+- The generated project's Java passes `comsolcompile` unchanged, and `run_comsol.ps1` drives the whole loop: compile → `comsolbatch` → MPH save → completion marker → results listing.
+- A source file that fails to compile stops the run **even when a stale class file is planted in the project directory**. `comsolcompile` returns exit code 0 after printing `ERROR: Compilation failed`, so the gate is the class file the compiler produced, and `results/compile.log` keeps the compiler output. In that state the batch step never starts.
+- A failed run leaves no completion marker and no MPH; the runner exits non-zero instead of reporting success.
+- A stale marker is deleted before each run, so a previous success cannot be reused as this run's evidence.
+- The scaffold refuses a non-empty destination directory and a class name that is not a valid Java identifier.
+
+That second bullet is the reason this skill exists in scripted form: the exit code lied, and the only honest signal was the artifact.
 
 ## Requirements
 

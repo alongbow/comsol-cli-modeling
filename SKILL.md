@@ -13,7 +13,7 @@ Build a reproducible CLI project that creates the model, solves it, exports raw 
 2. Write a model contract before coding: geometry, dimensions, materials, governing physics, assumptions, initial and boundary conditions, study type, outputs, and numerical acceptance criteria.
 3. For a new project, run `scripts/new_comsol_cli_project.ps1`. Keep source, raw results, figures, logs, and validation reports in separate paths.
 4. Implement the Java model in small methods: parameters, geometry, selections, materials, physics, operators, mesh, study, exports, and summary.
-5. Compile with `comsolcompile` before starting a solve. Treat compilation as the API compatibility gate for the installed COMSOL version.
+5. Compile with `comsolcompile` before starting a solve. Treat compilation as the API compatibility gate for the installed COMSOL version — but gate on the produced class file, not the exit code: `comsolcompile` was measured printing `ERROR: Compilation failed` while still returning 0, which leaves a stale class file to be solved and reported as success.
 6. Run with `comsolbatch`, a dedicated preferences directory, a batch log, and a completion marker written only after all required exports and the MPH save succeed.
 7. Validate geometry selections and numerical invariants before judging contour plots. Never declare success from images alone.
 8. Refine mesh, time step, and solver tolerance when validation or convergence checks fail. Preserve failed logs and do not mix stale outputs into a new run.

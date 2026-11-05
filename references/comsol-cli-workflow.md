@@ -78,6 +78,8 @@ Run from the project root:
 
 Do not infer completion only from the process exit code. Require a marker written by Java after the solve, required exports, and MPH save. On failure, retain the complete log and report its last useful exception chain.
 
+`comsolcompile` is not exempt from that rule. Measured on COMSOL 6.3.0.290 / Windows: a source file with a syntax error printed `ERROR: Compilation failed` and still left `$LASTEXITCODE` at 0. Gate on the artifact, not the exit code — delete `ModelName.class` before compiling, capture the compile output to `results/compile.log`, and treat a missing class file afterwards as a failed compile. Otherwise a class file from an earlier good build is solved silently and the run reports success for source that no longer compiles.
+
 Use a minimal preferences directory that grants only required file access. Keep network, external process, reflection, property, runtime, and socket permissions disabled unless the model demonstrably needs one and the user approves it.
 
 ## Iteration strategy

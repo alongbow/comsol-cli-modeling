@@ -49,6 +49,8 @@ Expand-Template `
   (Join-Path $destinationPath 'run_comsol.ps1')
 Copy-Item -LiteralPath (Join-Path $assets 'comsol.prefs.template') `
   -Destination (Join-Path $destinationPath '.comsol-cli-prefs\comsol.prefs')
+Copy-Item -LiteralPath (Join-Path $assets 'project.gitignore.template') `
+  -Destination (Join-Path $destinationPath '.gitignore')
 
 Write-Host "Created COMSOL CLI project: $destinationPath"
 Write-Host "Java source: $ClassName.java"

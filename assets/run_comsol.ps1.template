@@ -52,9 +52,19 @@ if (Test-Path -LiteralPath $Marker) { Remove-Item -LiteralPath $Marker -Force }
 Push-Location $Root
 try {
   Write-Host "=== COMSOL bin: $ComsolBin ==="
-  Write-Host "=== Compiling $ClassName.java ==="
-  & (Join-Path $ComsolBin 'comsolcompile.exe') "$ClassName.java"
-  if ($LASTEXITCODE -ne 0) { throw 'comsolcompile failed' }
+  # comsolcompile can exit 0 after a failed compilation (measured on 6.3.0.290),
+  # so gate on the class file it produces rather than on $LASTEXITCODE alone.
+  $ClassFile = Join-Path $Root "$ClassName.class"
+  $CompileLog = Join-Path $Results 'compile.log'
+  if (Test-Path -LiteralPath $ClassFile) { Remove-Item -LiteralPath $ClassFile -Force }
+
+  Write-Host "=== Compiling $ClassName.java (log: $CompileLog) ==="
+  & (Join-Path $ComsolBin 'comsolcompile.exe') "$ClassName.java" *> $CompileLog
+  $compileExit = $LASTEXITCODE
+  if (($compileExit -ne 0) -or -not (Test-Path -LiteralPath $ClassFile)) {
+    if (Test-Path -LiteralPath $CompileLog) { Get-Content -LiteralPath $CompileLog -Tail 40 }
+    throw "comsolcompile produced no $ClassName.class (exit $compileExit). See $CompileLog"
+  }
 
   Write-Host "=== Running $ClassName.class ==="
   & (Join-Path $ComsolBin 'comsolbatch.exe') `

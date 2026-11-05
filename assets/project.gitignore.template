@@ -1,0 +1,11 @@
+# COMSOL build and run artifacts.
+# A solved .mph reaches hundreds of MB, and a stray .class is a false-success
+# hazard (a stale class can be solved instead of the current source), so
+# neither belongs in version control.
+*.class
+*.mph
+*.log
+results/
+
+# figures/ is intentionally not ignored: publication figures usually belong
+# with the project. Add "figures/" here if yours are large or generated.

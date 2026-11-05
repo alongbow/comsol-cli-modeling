@@ -65,7 +65,8 @@ try {
  & $UvExe @runtimeArgs python preflight_duct.py *> 'cad.log'
  if($LASTEXITCODE -ne 0){throw 'CAD runtime failed; inspect cad.log'}
  & $compile CadComsolPreflight.java *> 'compile.log'
- if($LASTEXITCODE -ne 0){throw 'Java compilation failed; inspect compile.log'}
+ # comsolcompile can return 0 after a failed compile, so require the artifact.
+ if(($LASTEXITCODE -ne 0) -or -not(Test-Path -LiteralPath 'CadComsolPreflight.class')){throw 'Java compilation failed; inspect compile.log'}
  & $batch -prefsdir $prefs -inputfile CadComsolPreflight.class -nosave -batchlogout -batchlog (Join-Path $probe 'batch.log') *> 'stdout.log'
  if(!(Test-Path -LiteralPath 'passed.marker')){throw 'Native STEP/acoustic/export check failed; inspect batch.log and stdout.log. Do not launch the full solve.'}
  $csv=Join-Path $probe 'probe.csv'
