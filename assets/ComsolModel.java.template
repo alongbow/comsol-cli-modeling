@@ -1,0 +1,41 @@
+import com.comsol.model.Model;
+import com.comsol.model.util.ModelUtil;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+/** Minimal COMSOL CLI plumbing model. Replace buildModel with the real model. */
+public final class __CLASS_NAME__ {
+  private static final Path RESULTS = Paths.get("results");
+
+  public static void main(String[] args) throws Exception {
+    Files.createDirectories(RESULTS);
+    Model model = ModelUtil.create("Model");
+    try {
+      model.modelPath(".");
+      model.label("__MODEL_FILENAME__");
+      buildModel(model);
+      model.save(RESULTS.resolve("__MODEL_FILENAME__").toString());
+      Files.write(
+          RESULTS.resolve("run_complete.marker"),
+          "__CLASS_NAME__ completed\n".getBytes(StandardCharsets.UTF_8));
+      System.out.println("__CLASS_NAME__ completed. Results are in ./results");
+    } finally {
+      ModelUtil.clear();
+    }
+  }
+
+  private static void buildModel(Model model) {
+    model.component().create("comp1", true);
+    model.component("comp1").geom().create("geom1", 2);
+    model.component("comp1").geom("geom1").axisymmetric(true);
+    model.component("comp1").geom("geom1").create("r1", "Rectangle");
+    model.component("comp1").geom("geom1").feature("r1")
+        .set("size", new String[] {"1[mm]", "2[mm]"});
+    model.component("comp1").geom("geom1").feature("r1")
+        .set("pos", new String[] {"0", "-1[mm]"});
+    model.component("comp1").geom("geom1").run();
+  }
+}

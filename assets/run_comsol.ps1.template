@@ -1,0 +1,80 @@
+param()
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$ClassName = '__CLASS_NAME__'
+$ConfiguredComsolBin = '__COMSOL_BIN__'
+$Root = (Resolve-Path (Split-Path -Parent $MyInvocation.MyCommand.Path)).Path
+$Results = Join-Path $Root 'results'
+$PrefsDir = Join-Path $Root '.comsol-cli-prefs'
+$Marker = Join-Path $Results 'run_complete.marker'
+$Log = Join-Path $Results 'comsol_batch.log'
+
+function Resolve-ComsolBin {
+  $candidates = New-Object System.Collections.Generic.List[string]
+  if ($ConfiguredComsolBin) { $candidates.Add($ConfiguredComsolBin) }
+  if ($env:COMSOL_BIN) { $candidates.Add($env:COMSOL_BIN) }
+
+  $compileCommand = Get-Command comsolcompile.exe -ErrorAction SilentlyContinue
+  if ($compileCommand) { $candidates.Add((Split-Path -Parent $compileCommand.Source)) }
+
+  foreach ($pattern in @(
+    'C:\Program Files\COMSOL\COMSOL*\Multiphysics\bin\win64\comsolcompile.exe',
+    'D:\comsol\COMSOL*\Multiphysics\bin\win64\comsolcompile.exe',
+    'E:\comsol\COMSOL*\Multiphysics\bin\win64\comsolcompile.exe'
+  )) {
+    Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
+      Where-Object { -not $_.PSIsContainer } |
+      Sort-Object FullName -Descending |
+      ForEach-Object { $candidates.Add($_.DirectoryName) }
+  }
+
+  foreach ($candidate in $candidates | Select-Object -Unique) {
+    if ((Test-Path -LiteralPath (Join-Path $candidate 'comsolcompile.exe')) -and
+        (Test-Path -LiteralPath (Join-Path $candidate 'comsolbatch.exe'))) {
+      return (Resolve-Path $candidate).Path
+    }
+  }
+  throw 'Could not locate comsolcompile.exe and comsolbatch.exe. Set COMSOL_BIN or regenerate with -ComsolBin.'
+}
+
+New-Item -ItemType Directory -Force -Path $Results, $PrefsDir | Out-Null
+$Results = (Resolve-Path $Results).Path
+$RootPrefix = $Root.TrimEnd('\') + '\'
+if (-not $Results.StartsWith($RootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+  throw "Refusing to write outside the project root: $Results"
+}
+
+$ComsolBin = Resolve-ComsolBin
+if (Test-Path -LiteralPath $Marker) { Remove-Item -LiteralPath $Marker -Force }
+
+Push-Location $Root
+try {
+  Write-Host "=== COMSOL bin: $ComsolBin ==="
+  Write-Host "=== Compiling $ClassName.java ==="
+  & (Join-Path $ComsolBin 'comsolcompile.exe') "$ClassName.java"
+  if ($LASTEXITCODE -ne 0) { throw 'comsolcompile failed' }
+
+  Write-Host "=== Running $ClassName.class ==="
+  & (Join-Path $ComsolBin 'comsolbatch.exe') `
+    -prefsdir $PrefsDir `
+    -inputfile "$ClassName.class" `
+    -nosave `
+    -batchlogout `
+    -batchlog $Log
+  $batchExitCode = $LASTEXITCODE
+
+  if (-not (Test-Path -LiteralPath $Marker)) {
+    if (Test-Path -LiteralPath $Log) { Get-Content -LiteralPath $Log -Tail 80 }
+    throw 'COMSOL batch ended before the completion marker was written'
+  }
+  if ($batchExitCode -ne 0) {
+    Write-Warning "COMSOL returned $batchExitCode after writing the completion marker. Inspect the log."
+  }
+
+  Write-Host "=== Completed. Results: $Results ==="
+  Get-ChildItem -LiteralPath $Results | Select-Object Name, Length | Format-Table -AutoSize
+} finally {
+  Pop-Location
+}

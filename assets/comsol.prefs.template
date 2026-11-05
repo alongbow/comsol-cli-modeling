@@ -1,0 +1,10 @@
+security.comsol.allowbatch=on
+security.comsol.allowmethods=on
+security.external.enable=on
+security.external.filepermission=full
+security.external.netpermission=off
+security.external.propertypermission=off
+security.external.reflectpermission=off
+security.external.runtimepermission=off
+security.external.securitypermission=off
+security.external.socketpermission=off

@@ -1,0 +1,4 @@
+interface:
+  display_name: "COMSOL CLI Modeling"
+  short_description: "用 Java API 与批处理构建、运行和验证 COMSOL 模型"
+  default_prompt: "Use $comsol-cli-modeling to build and validate this COMSOL model through the CLI."

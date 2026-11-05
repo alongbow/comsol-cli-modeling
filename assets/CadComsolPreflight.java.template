@@ -1,0 +1,61 @@
+import com.comsol.model.*;
+import com.comsol.model.util.*;
+import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+
+public class CadComsolPreflight {
+ static final String ROOT="__PROBE_ROOT__/";
+ public static void main(String[] args) throws Exception {
+  if(!ModelUtil.hasProduct("ACOUSTICS") || !ModelUtil.hasProduct("CADIMPORT")) throw new RuntimeException("Required acoustic/CAD-import license unavailable");
+  Model m=ModelUtil.create("Preflight");m.modelPath(ROOT);
+  m.component().create("c",true);m.component("c").geom().create("g",3);
+  m.component("c").geom("g").lengthUnit("mm");
+  m.component("c").geom("g").create("imp","Import");
+  m.component("c").geom("g").feature("imp").set("filename",ROOT+"preflight_duct.step");
+  m.component("c").geom("g").run();
+  m.component("c").material().create("air","Common");
+  m.component("c").material("air").propertyGroup("def").set("density","1.204[kg/m^3]");
+  m.component("c").material("air").propertyGroup("def").set("soundspeed","343[m/s]");
+  m.component("c").physics().create("acpr","PressureAcoustics","g");
+  for(int i=1;i<=2;i++) {
+   String tag="end"+i;double x=i==1?-15:15;
+   m.component("c").selection().create(tag,"Box");
+   m.component("c").selection(tag).set("entitydim",2);
+   m.component("c").selection(tag).set("condition","inside");
+   m.component("c").selection(tag).set("xmin",(x-0.01)+"[mm]");
+   m.component("c").selection(tag).set("xmax",(x+0.01)+"[mm]");
+   m.component("c").selection(tag).set("ymin","-6[mm]");m.component("c").selection(tag).set("ymax","6[mm]");
+   m.component("c").selection(tag).set("zmin","-6[mm]");m.component("c").selection(tag).set("zmax","6[mm]");
+   if(m.component("c").selection(tag).entities(2).length!=1) throw new RuntimeException("Wrong imported port selection");
+   String port="port"+i;
+   m.component("c").physics("acpr").create(port,"Port",2);
+   m.component("c").physics("acpr").feature(port).selection().named(tag);
+   m.component("c").physics("acpr").feature(port).set("PortName",Integer.toString(i));
+   m.component("c").physics("acpr").feature(port).set("PortType","LosslessUserDefined");
+   m.component("c").physics("acpr").feature(port).set("p","1");
+   m.component("c").physics("acpr").feature(port).set("kn","2*pi*freq/343[m/s]");
+   m.component("c").physics("acpr").feature(port).set("pamp","1[Pa]");
+   m.component("c").physics("acpr").feature(port).set("PortExcitation",i==1?"on":"off");
+  }
+  m.component("c").cpl().create("intvol","Integration");m.component("c").cpl("intvol").selection().all();
+  m.component("c").mesh().create("mesh");
+  m.component("c").mesh("mesh").feature("size").set("custom","on");
+  m.component("c").mesh("mesh").feature("size").set("hmax","3[mm]");
+  m.component("c").mesh("mesh").feature("size").set("hmin","0.2[mm]");
+  m.component("c").mesh("mesh").create("tet","FreeTet");m.component("c").mesh("mesh").run();
+  m.study().create("std");m.study("std").create("freq","Frequency");m.study("std").feature("freq").set("plist","200");m.study("std").run();
+  String[] datasets=m.result().dataset().tags();if(datasets.length!=1)throw new RuntimeException("Unexpected probe datasets");
+  m.result().table().create("table","Table");m.result().numerical().create("probe","EvalGlobal");
+  m.result().numerical("probe").set("data",datasets[0]);m.result().numerical("probe").set("table","table");
+  m.result().numerical("probe").set("expr",new String[]{"freq","-20*log10(abs(acpr.S21))","abs(acpr.S11)^2+abs(acpr.S21)^2","intvol(1)"});
+  double[][] a=m.result().numerical("probe").getReal();
+  if(a.length!=4 || a[0].length!=1) throw new RuntimeException("Empty or wrong export");
+  for(double[] row:a)if(!Double.isFinite(row[0]))throw new RuntimeException("Nonfinite probe result");
+  double analytic=Math.PI*0.005*0.005*0.03;
+  if(Math.abs(a[0][0]-200)>1e-6 || Math.abs(a[1][0])>0.1 || Math.abs(a[2][0]-1)>0.01 || Math.abs(a[3][0]/analytic-1)>0.001)throw new RuntimeException("Physical probe validation failed");
+  m.result().numerical("probe").setResult();m.result().table("table").save(ROOT+"probe.csv");
+  m.save(ROOT+"probe.mph");
+  Files.write(Paths.get(ROOT+"passed.marker"),("frequency_hz="+a[0][0]+"; TL_dB="+a[1][0]+"; R_plus_T="+a[2][0]+"; volume_m3="+a[3][0]+"\n").getBytes(StandardCharsets.UTF_8));
+  ModelUtil.clear();
+ }
+}
