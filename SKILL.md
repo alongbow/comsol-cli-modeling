@@ -7,6 +7,16 @@ description: Build, repair, run, and validate COMSOL models with the Java API an
 
 Build a reproducible CLI project that creates the model, solves it, exports raw data, validates physics, and records completion without relying on the COMSOL GUI.
 
+## Start from the user's modeling request
+
+This is a Git-installable, self-contained agent skill. The user installs the repository into their agent's skill directory and describes a modeling task; carry out the setup and modeling work yourself.
+
+- Find COMSOL and its version, check the task's modules, create the project, and run the relevant short checks with tools. Do not turn these agent tasks into a setup checklist for the user.
+- Resolve paths automatically first. If several releases are installed, honor the requested version or existing working project configuration; ask one short version question only when the choice remains ambiguous. Do not require the user to set `COMSOL_BIN` as routine onboarding.
+- For CAD generation, use the installed text-to-cad skill when available, or the bundled standalone cadgen instructions in [the CAD reference](references/text-to-cad-integration.md). A separate plugin installation is not required.
+- Reuse available dependencies. Prepare missing task-specific open-source CAD dependencies in a project-local environment or managed tool cache, respecting host permissions and storage rules; keep COMSOL and existing global software installations unchanged.
+- Ask only for scientific inputs that materially change the model or for a blocker you cannot resolve, such as missing COMSOL/modules or a host approval. Otherwise continue through modeling, export and validation.
+
 ## Core workflow
 
 1. Inspect the workspace, COMSOL installation, version, licensed modules, existing Java source, scripts, logs, and user changes. Resolve the installed release with `scripts/resolve_comsol.ps1`; use an explicit installation when multiple versions exist.
@@ -21,7 +31,7 @@ Build a reproducible CLI project that creates the model, solves it, exports raw 
 
 ## Geometry route and text-to-cad integration
 
-Use COMSOL-native geometry for simple primitives, 2D and axisymmetric models. For complex 3D parts, assemblies, or repeated geometric variants, use the available `text-to-cad:cad` skill to create and inspect parametric solids, then import STEP through the COMSOL Java API. Existing STEP files can enter at the import stage. Read [the geometry handoff workflow](references/text-to-cad-integration.md) for parameter ownership, units, simulation domains, selection rebuilding and acceptance checks. CAD supplies geometry; materials, physics, boundary conditions, mesh and studies are configured in COMSOL.
+Use COMSOL-native geometry for simple primitives, 2D and axisymmetric models. For complex 3D parts, assemblies, or repeated geometric variants, create and inspect parametric solids using the available `text-to-cad:cad` skill or the bundled standalone CAD route, then import STEP through the COMSOL Java API. Existing STEP files can enter at the import stage. Read [the geometry handoff workflow](references/text-to-cad-integration.md) for parameter ownership, units, simulation domains, selection rebuilding and acceptance checks. CAD supplies geometry; materials, physics, boundary conditions, mesh and studies are configured in COMSOL.
 
 ## CAD import and repeat runs
 
@@ -60,16 +70,15 @@ Require at minimum:
 
 Read `references/comsol-cli-workflow.md` when locating COMSOL, scaffolding a project, selecting a Java API pattern, debugging compilation, setting security preferences, or interpreting batch completion.
 
-Use the scaffold:
+Agent implementation example (run this yourself after resolving the project location):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/new_comsol_cli_project.ps1 `
   -ClassName CapsuleModel `
-  -Destination C:\work\capsule-model `
-  -ComsolBin $env:COMSOL_BIN
+  -Destination C:\work\capsule-model
 ```
 
-Set `COMSOL_BIN` to the actual installation's `Multiphysics\bin\win64` directory, or omit `-ComsolBin` for discovery. The generated runner accepts `-ComsolBin` to override a saved path and `-Diagnose` to record version/path information without compiling or solving. See the version compatibility section in `references/comsol-cli-workflow.md` for 6.4 reports.
+Omitting `-ComsolBin` uses automatic discovery. When an explicit installation is needed, pass its actual `Multiphysics\bin\win64` directory yourself; `COMSOL_BIN` is an optional override. The generated runner accepts `-ComsolBin` to override a saved path and `-Diagnose` to record version/path information without compiling or solving. See the version compatibility section in `references/comsol-cli-workflow.md` for 6.4 reports.
 
 The generated Java file is a plumbing smoke test, not a finished physical model. Replace `buildModel` while preserving output and completion behavior.
 
