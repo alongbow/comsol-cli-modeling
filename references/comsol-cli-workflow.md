@@ -18,15 +18,22 @@ Keep a single authoritative run entry point. Derive PowerShell paths from the ru
 
 ## Discover the installation
 
-Resolve both executables from one `bin/win64` directory:
+Dot-source `scripts/resolve_comsol.ps1` and call `Resolve-ComsolBin`. Both executables must come from one `bin\win64` directory. Selection order: runner `-ComsolBin` → `COMSOL_BIN` → scaffold-saved path → discovery through PATH, Windows registry `COMSOLROOT`, and common installation directories. Invalid explicit paths fail visibly. Multiple discovered installations require an explicit choice.
 
-```powershell
-Get-Command comsolcompile.exe -ErrorAction SilentlyContinue
-Get-ChildItem 'C:\Program Files\COMSOL\COMSOL*\Multiphysics\bin\win64\comsolcompile.exe' -ErrorAction SilentlyContinue
-Get-ChildItem 'E:\comsol\COMSOL*\Multiphysics\bin\win64\comsolcompile.exe' -ErrorAction SilentlyContinue
-```
+## Version compatibility and 6.4 reports
 
-Record the version and licensed physics modules. API tags and properties can differ by COMSOL release.
+COMSOL 6.4 documents `comsolcompile`, `comsolbatch -inputfile <class>`, `-prefsdir`, and `-version`. Compiling Java model source is distinct from packaging standalone applications with COMSOL Compiler. Physics/CAD licenses must still match the model.
+
+Official references: [6.4 Windows commands](https://doc.comsol.com/6.4/doc/com.comsol.help.comsol/comsol_ref_running.38.31.html), [compiled Java batch models](https://doc.comsol.com/6.4/doc/com.comsol.help.comsol/comsol_api_intro.46.11.html), [programming reference and registry lookup](https://doc.comsol.com/6.4/doc/com.comsol.help.comsol/COMSOL_ProgrammingReferenceManual.pdf).
+
+The previous CAD preflight defaulted to COMSOL63. This was a portability defect; it does not establish the cause of a report without logs.
+
+1. Generate a fresh geometry-only scaffold. Run `run_comsol.ps1 -ComsolBin '<actual 6.4 bin\win64>' -Diagnose` and inspect `results/comsol_environment.json` and `comsol_version.log`.
+2. Run the unmodified scaffold with the same installation. On failure, inspect `compile.log`, `comsol_stdout.log` and `comsol_batch.log`. The runner uses project-local startup/configuration directories.
+3. For CAD/acoustics, run the preflight with the same `-ComsolBin` and `-Force`. Diagnose missing licenses, import failures and physics/API errors separately.
+4. Recompile source with the selected release, check that release's exported Java/examples, and validate the target physics with a short solve.
+
+Verification on 2026-11-07: local COMSOL 6.3.0.290 passed geometry-only compile/batch/MPH checks and resolver selection/error checks. 6.4 CLI syntax was checked against official documentation; no 6.4 runtime or release-specific physics/CAD validation was available. Existing generated runners must be regenerated or updated to receive these changes.
 
 ## Java model structure
 

@@ -1,6 +1,6 @@
 ---
 name: comsol-cli-modeling
-description: Build, repair, run, and validate COMSOL models with the Java API and CLI, including STEP/CAD import, acoustics, heat transfer and phase change. Use for COMSOL建模、CAD导入COMSOL、批处理求解、MPH创建、仿真验证 and solver or export debugging.
+description: Build, repair, run, and validate COMSOL models with the Java API and CLI, including text-to-cad/STEP geometry handoff, acoustics, heat transfer and phase change. Use for COMSOL建模、CAD导入COMSOL、批处理求解、MPH创建、仿真验证 and solver or export debugging.
 ---
 
 # COMSOL CLI Modeling
@@ -9,7 +9,7 @@ Build a reproducible CLI project that creates the model, solves it, exports raw 
 
 ## Core workflow
 
-1. Inspect the workspace, COMSOL installation, version, licensed modules, existing Java source, scripts, logs, and user changes.
+1. Inspect the workspace, COMSOL installation, version, licensed modules, existing Java source, scripts, logs, and user changes. Resolve the installed release with `scripts/resolve_comsol.ps1`; use an explicit installation when multiple versions exist.
 2. Write a model contract before coding: geometry, dimensions, materials, governing physics, assumptions, initial and boundary conditions, study type, outputs, and numerical acceptance criteria.
 3. For a new project, run `scripts/new_comsol_cli_project.ps1`. Keep source, raw results, figures, logs, and validation reports in separate paths.
 4. Implement the Java model in small methods: parameters, geometry, selections, materials, physics, operators, mesh, study, exports, and summary.
@@ -18,6 +18,10 @@ Build a reproducible CLI project that creates the model, solves it, exports raw 
 7. Validate geometry selections and numerical invariants before judging contour plots. Never declare success from images alone.
 8. Refine mesh, time step, and solver tolerance when validation or convergence checks fail. Preserve failed logs and do not mix stale outputs into a new run.
 9. Deliver the exact run command, output locations, assumptions, validation status, and any checks that were not run.
+
+## Geometry route and text-to-cad integration
+
+Use COMSOL-native geometry for simple primitives, 2D and axisymmetric models. For complex 3D parts, assemblies, or repeated geometric variants, use the available `text-to-cad:cad` skill to create and inspect parametric solids, then import STEP through the COMSOL Java API. Existing STEP files can enter at the import stage. Read [the geometry handoff workflow](references/text-to-cad-integration.md) for parameter ownership, units, simulation domains, selection rebuilding and acceptance checks. CAD supplies geometry; materials, physics, boundary conditions, mesh and studies are configured in COMSOL.
 
 ## CAD import and repeat runs
 
@@ -62,8 +66,10 @@ Use the scaffold:
 powershell -ExecutionPolicy Bypass -File scripts/new_comsol_cli_project.ps1 `
   -ClassName CapsuleModel `
   -Destination C:\work\capsule-model `
-  -ComsolBin "C:\Program Files\COMSOL\COMSOL63\Multiphysics\bin\win64"
+  -ComsolBin $env:COMSOL_BIN
 ```
+
+Set `COMSOL_BIN` to the actual installation's `Multiphysics\bin\win64` directory, or omit `-ComsolBin` for discovery. The generated runner accepts `-ComsolBin` to override a saved path and `-Diagnose` to record version/path information without compiling or solving. See the version compatibility section in `references/comsol-cli-workflow.md` for 6.4 reports.
 
 The generated Java file is a plumbing smoke test, not a finished physical model. Replace `buildModel` while preserving output and completion behavior.
 

@@ -24,6 +24,8 @@ Then ask your agent to build a COMSOL model, or reference the skill explicitly.
 | --- | --- |
 | `SKILL.md` | The workflow: model contract → implement → compile gate → batch run → validate → deliver. Loaded by the agent. |
 | `references/comsol-cli-workflow.md` | Locating the COMSOL install, project layout, Java API patterns, compile debugging, security prefs, reading batch completion. |
+| `references/text-to-cad-integration.md` | Geometry routing, shared parameters, STEP handoff, simulation domains and semantic selections. |
+| `scripts/resolve_comsol.ps1` | Shared Windows installation discovery and explicit version selection. |
 | `references/cad-comsol-windows.md` | Tested CAD → STEP → COMSOL import rules on Windows, plus a symptom → first-fix table for the failures that cost the most time. |
 | `references/phase-change-axisymmetric.md` | PCM / shell-core / 2D axisymmetry checks: liquid-fraction direction, symmetry, monotonicity, energy balance. |
 | `references/validation.md` | Gate order, tolerance selection, figure QA, what counts as convergence evidence. |
@@ -32,30 +34,47 @@ Then ask your agent to build a COMSOL model, or reference the skill explicitly.
 | `assets/*.template` | Templates the scaffold expands: model class, runner, prefs, acoustic preflight. |
 | `agents/openai.yaml` | Display metadata for agents that surface skills in a menu. |
 
+## text-to-cad integration
+
+Use text-to-cad for complex 3D geometry and COMSOL for the simulation:
+
+**Natural-language dimensions → parametric CAD → verified STEP → COMSOL import → named selections → physics/mesh/study → validated data.**
+
+Simple 2D, axisymmetric and primitive geometry can stay inside COMSOL. CAD and COMSOL share a geometry contract for parameters, units, coordinate axes and domain roles. Rebuild and verify selections after every geometry change; CAD face IDs are not COMSOL boundary IDs. A fluid simulation also needs the fluid volume, not only the manufactured solid.
+
+Read [the integration workflow](references/text-to-cad-integration.md). The existing acoustic preflight already exercises the CAD-to-STEP-to-COMSOL path for a small duct; it is an environment probe, not an automatic converter for arbitrary physics. The general handoff workflow is new guidance; no generic CAD/physics converter is added.
+
 ## Quick start
 
 ```powershell
-# 1. Scaffold a project
+# 1. Set COMSOL_BIN to the actual installation's Multiphysics\bin\win64.
+#    Alternatively, omit -ComsolBin for automatic discovery.
+#    Scaffold a project
 powershell -ExecutionPolicy Bypass -File scripts/new_comsol_cli_project.ps1 `
   -ClassName CapsuleModel `
   -Destination C:\work\capsule-model `
-  -ComsolBin "C:\Program Files\COMSOL\COMSOL63\Multiphysics\bin\win64"
+  -ComsolBin $env:COMSOL_BIN
 
 # 2. Replace buildModel() in the generated Java — the template is a plumbing
 #    smoke test, not a finished physical model.
 
 # 3. Run it
-cd C:\work\capsule-model && .\run_comsol.ps1
+Set-Location C:\work\capsule-model
+.\run_comsol.ps1 -Diagnose
+.\run_comsol.ps1
 ```
 
 For CAD-driven work, preflight the environment before any long study:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/test_cad_comsol_acoustics.ps1 `
-  -ProjectRoot C:\work\acoustics-preflight
+  -ProjectRoot C:\work\capsule-model `
+  -ComsolBin $env:COMSOL_BIN -Force
 ```
 
-`-ComsolBin` defaults to the standard install root. The generated runner resolves COMSOL in this order: `-ComsolBin` baked in at scaffold time → `$env:COMSOL_BIN` → `comsolcompile.exe` on `PATH` → a probe of the usual install roots. Set `COMSOL_BIN` once per machine to switch versions without regenerating the project.
+Both the generated runner and CAD preflight use a shared resolver. Selection order: runner `-ComsolBin` → `COMSOL_BIN` → scaffold-saved path → PATH, registry and common directories. Multiple installations require an explicit choice. Invalid explicit paths fail rather than silently switching releases.
+
+For a 6.4 report, run `run_comsol.ps1 -ComsolBin '<actual 6.4 bin\win64>' -Diagnose` first. Send `results/comsol_environment.json` and the first failing compile/batch log. COMSOL 6.4 command syntax was checked against its official documentation; **6.4 has not been runtime-tested here**. Existing generated projects need their runners regenerated or updated.
 
 The scaffold also writes a `.gitignore` covering `*.class`, `*.mph`, `*.log` and `results/` — a solved MPH runs to hundreds of MB, and a stray class file is a correctness hazard, not just noise.
 
@@ -81,6 +100,8 @@ Measured on a real COMSOL 6.3.0.290 install (Windows, PowerShell 5.1), not asser
 - A failed run leaves no completion marker and no MPH; the runner exits non-zero instead of reporting success.
 - A stale marker is deleted before each run, so a previous success cannot be reused as this run's evidence.
 - The scaffold refuses a non-empty destination directory and a class name that is not a valid Java identifier.
+
+The 2026-11-07 update additionally checks installation selection, version diagnostics and project-local startup paths on COMSOL 6.3.0.290. No new 6.4 runtime or general CAD-to-physics validation is claimed.
 
 That second bullet is the reason this skill exists in scripted form: the exit code lied, and the only honest signal was the artifact.
 

@@ -9,3 +9,8 @@ results/
 
 # figures/ is intentionally not ignored: publication figures usually belong
 # with the project. Add "figures/" here if yours are large or generated.
+
+# Project-local COMSOL startup state and preflight caches.
+.comsol-runtime/
+.comsol-cli-prefs/
+.cad-comsol-preflight/

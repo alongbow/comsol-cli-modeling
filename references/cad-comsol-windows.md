@@ -2,13 +2,15 @@
 
 Verified 2026-10-06: COMSOL 6.3.0.290, cadgen 0.7.15, managed Python 3.13, uv 0.12.23. These are this machine's tested versions, not universal latest versions.
 
+For general CAD/physics projects, first read [the text-to-cad handoff workflow](text-to-cad-integration.md).
+
 ## Cheap entry point
 
-For acoustic CAD tasks run `scripts/test_cad_comsol_acoustics.ps1 -ProjectRoot <absolute writable project>`. It generates a small straight air duct, imports its STEP, solves 200 Hz, exports and checks the data. Logs remain in the project. An unchanged environment reuses a checked pass for up to 24 hours; `-Force` reruns it. A cached pass is not a promise that a license remains available. Use ordinary execution first; if the native importer cannot read an existing absolute STEP path, use the host's approval mechanism for that exact preflight. Supply `-ExecutionContextTag native-approved` only when actually executing under that approval; standard and approved runs have separate cache keys. This does not authorize unrelated escalation or security changes.
+For acoustic CAD tasks run `scripts/test_cad_comsol_acoustics.ps1 -ProjectRoot <absolute writable project> -ComsolBin <actual installation bin\win64>`. Omitting `-ComsolBin` uses the shared resolver instead of a fixed COMSOL63 path; use `-Force` for a fresh release check. It generates a small straight air duct, imports its STEP, solves 200 Hz, exports and checks the data. Logs remain in the project. An unchanged environment reuses a checked pass for up to 24 hours; `-Force` reruns it. A cached pass is not a promise that a license remains available. Use ordinary execution first; if the native importer cannot read an existing absolute STEP path, use the host's approval mechanism for that exact preflight. Supply `-ExecutionContextTag native-approved` only when actually executing under that approval; standard and approved runs have separate cache keys. This does not authorize unrelated escalation or security changes.
 
 ## Known local environment
 
-- COMSOL bin: `<COMSOL_BIN>` — the `Multiphysics\bin\win64` directory of your install (default install root is `C:\Program Files\COMSOL\COMSOL63\Multiphysics`). Probe the two or three plausible roots instead of searching the whole disk. Acoustics and CAD Import were available on the reference machine, but verify rather than assume future license availability.
+- COMSOL bin: `<COMSOL_BIN>` — the `Multiphysics\bin\win64` directory of your install selected with `scripts/resolve_comsol.ps1`, `-ComsolBin`, or `COMSOL_BIN`. Do not assume a particular drive or release exists. Acoustics and CAD Import were available on the reference machine, but verify rather than assume future license availability.
 - uvx: `%USERPROFILE%\.local\bin\uvx.exe`.
 - `UV_PYTHON_INSTALL_DIR=%USERPROFILE%\.local\share\uv\python` avoids the observed agent-sandbox Windows app-redirection problem. Use a process-local value in runners; don't rewrite user environment during every task.
 

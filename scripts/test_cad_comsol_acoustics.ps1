@@ -1,6 +1,6 @@
 param(
  [Parameter(Mandatory=$true)][string]$ProjectRoot,
- [string]$ComsolBin='C:\Program Files\COMSOL\COMSOL63\Multiphysics\bin\win64',
+ [string]$ComsolBin='',
  [string]$UvExe=(Join-Path $env:USERPROFILE '.local\bin\uvx.exe'),
  [string]$PythonInstallDir=(Join-Path $env:USERPROFILE '.local\share\uv\python'),
  [string]$CadgenVersion='0.7.15',
@@ -10,6 +10,8 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'resolve_comsol.ps1')
+$ComsolBin=Resolve-ComsolBin -ComsolBin $ComsolBin
 $root=(Resolve-Path -LiteralPath $ProjectRoot).Path
 $compile=Join-Path $ComsolBin 'comsolcompile.exe'
 $batch=Join-Path $ComsolBin 'comsolbatch.exe'
@@ -21,6 +23,7 @@ $state=Join-Path $root '.cad-comsol-preflight'
 New-Item -ItemType Directory -Force -Path $state | Out-Null
 $fingerprint=[ordered]@{
  script=(Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
+ resolver=(Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'resolve_comsol.ps1') -Algorithm SHA256).Hash
  template=(Get-FileHash -LiteralPath $template -Algorithm SHA256).Hash
  comsol_bin=(Resolve-Path -LiteralPath $ComsolBin).Path
  batch_size=(Get-Item -LiteralPath $batch).Length

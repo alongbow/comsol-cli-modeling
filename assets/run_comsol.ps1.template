@@ -1,90 +1,65 @@
-param()
+param([string]$ComsolBin = '', [switch]$Diagnose)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-
 $ClassName = '__CLASS_NAME__'
 $ConfiguredComsolBin = '__COMSOL_BIN__'
-$Root = (Resolve-Path (Split-Path -Parent $MyInvocation.MyCommand.Path)).Path
+$Root = $PSScriptRoot
 $Results = Join-Path $Root 'results'
 $PrefsDir = Join-Path $Root '.comsol-cli-prefs'
+$Runtime = Join-Path $Root '.comsol-runtime'
 $Marker = Join-Path $Results 'run_complete.marker'
 $Log = Join-Path $Results 'comsol_batch.log'
+. (Join-Path $Root 'resolve_comsol.ps1')
 
-function Resolve-ComsolBin {
-  $candidates = New-Object System.Collections.Generic.List[string]
-  if ($ConfiguredComsolBin) { $candidates.Add($ConfiguredComsolBin) }
-  if ($env:COMSOL_BIN) { $candidates.Add($env:COMSOL_BIN) }
-
-  $compileCommand = Get-Command comsolcompile.exe -ErrorAction SilentlyContinue
-  if ($compileCommand) { $candidates.Add((Split-Path -Parent $compileCommand.Source)) }
-
-  foreach ($pattern in @(
-    'C:\Program Files\COMSOL\COMSOL*\Multiphysics\bin\win64\comsolcompile.exe',
-    'D:\comsol\COMSOL*\Multiphysics\bin\win64\comsolcompile.exe',
-    'E:\comsol\COMSOL*\Multiphysics\bin\win64\comsolcompile.exe'
-  )) {
-    Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
-      Where-Object { -not $_.PSIsContainer } |
-      Sort-Object FullName -Descending |
-      ForEach-Object { $candidates.Add($_.DirectoryName) }
-  }
-
-  foreach ($candidate in $candidates | Select-Object -Unique) {
-    if ((Test-Path -LiteralPath (Join-Path $candidate 'comsolcompile.exe')) -and
-        (Test-Path -LiteralPath (Join-Path $candidate 'comsolbatch.exe'))) {
-      return (Resolve-Path $candidate).Path
-    }
-  }
-  throw 'Could not locate comsolcompile.exe and comsolbatch.exe. Set COMSOL_BIN or regenerate with -ComsolBin.'
+$ComsolBin = Resolve-ComsolBin -ComsolBin $ComsolBin -ConfiguredComsolBin $ConfiguredComsolBin
+New-Item -ItemType Directory -Force -Path $Results, $PrefsDir,
+  (Join-Path $Runtime 'tmp'), (Join-Path $Runtime 'configuration'), (Join-Path $Runtime 'workspace') | Out-Null
+$common = @('-prefsdir', $PrefsDir, '-tmpdir', (Join-Path $Runtime 'tmp'))
+$compileRuntime = @('-configuration', (Join-Path $Runtime 'configuration\compile_@process.id'),
+                    '-data', (Join-Path $Runtime 'workspace\compile_@process.id'))
+$batchRuntime = @('-configuration', (Join-Path $Runtime 'configuration\batch_@process.id'),
+                  '-data', (Join-Path $Runtime 'workspace\batch_@process.id'))
+$versionLog = Join-Path $Results 'comsol_version.log'
+& (Join-Path $ComsolBin 'comsolbatch.exe') @common @batchRuntime -version *> $versionLog
+$versionExit = $LASTEXITCODE
+$versionText = (Get-Content -LiteralPath $versionLog -Raw).Trim()
+$environment = [ordered]@{
+  comsol_bin = $ComsolBin; version = $versionText; version_exit_code = $versionExit
+  project_root = $Root; powershell = $PSVersionTable.PSVersion.ToString()
+}
+$environment | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Results 'comsol_environment.json') -Encoding UTF8
+Write-Host "COMSOL bin: $ComsolBin"
+Write-Host $versionText
+if ($versionExit -ne 0) { throw "COMSOL version check failed. Inspect $versionLog" }
+if ($Diagnose) {
+  Write-Host "Diagnostics: $(Join-Path $Results 'comsol_environment.json') (no compilation or solve performed)"
+  return
 }
 
-New-Item -ItemType Directory -Force -Path $Results, $PrefsDir | Out-Null
-$Results = (Resolve-Path $Results).Path
-$RootPrefix = $Root.TrimEnd('\') + '\'
-if (-not $Results.StartsWith($RootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-  throw "Refusing to write outside the project root: $Results"
-}
-
-$ComsolBin = Resolve-ComsolBin
 if (Test-Path -LiteralPath $Marker) { Remove-Item -LiteralPath $Marker -Force }
-
 Push-Location $Root
 try {
-  Write-Host "=== COMSOL bin: $ComsolBin ==="
-  # comsolcompile can exit 0 after a failed compilation (measured on 6.3.0.290),
-  # so gate on the class file it produces rather than on $LASTEXITCODE alone.
+  $compileLog = Join-Path $Results 'compile.log'
   $ClassFile = Join-Path $Root "$ClassName.class"
-  $CompileLog = Join-Path $Results 'compile.log'
+  # Some releases return zero even when compilation failed.
   if (Test-Path -LiteralPath $ClassFile) { Remove-Item -LiteralPath $ClassFile -Force }
-
-  Write-Host "=== Compiling $ClassName.java (log: $CompileLog) ==="
-  & (Join-Path $ComsolBin 'comsolcompile.exe') "$ClassName.java" *> $CompileLog
+  & (Join-Path $ComsolBin 'comsolcompile.exe') @common @compileRuntime "$ClassName.java" *> $compileLog
   $compileExit = $LASTEXITCODE
-  if (($compileExit -ne 0) -or -not (Test-Path -LiteralPath $ClassFile)) {
-    if (Test-Path -LiteralPath $CompileLog) { Get-Content -LiteralPath $CompileLog -Tail 40 }
-    throw "comsolcompile produced no $ClassName.class (exit $compileExit). See $CompileLog"
+  if (($compileExit -ne 0) -or -not (Test-Path -LiteralPath $ClassFile -PathType Leaf)) {
+    Get-Content -LiteralPath $compileLog -Tail 60
+    throw "Compilation produced no usable $ClassName.class (exit $compileExit). Inspect $compileLog"
   }
-
-  Write-Host "=== Running $ClassName.class ==="
-  & (Join-Path $ComsolBin 'comsolbatch.exe') `
-    -prefsdir $PrefsDir `
-    -inputfile "$ClassName.class" `
-    -nosave `
-    -batchlogout `
-    -batchlog $Log
+  $stdoutLog = Join-Path $Results 'comsol_stdout.log'
+  & (Join-Path $ComsolBin 'comsolbatch.exe') @common @batchRuntime -inputfile "$ClassName.class" -nosave -batchlogout -batchlog $Log *> $stdoutLog
   $batchExitCode = $LASTEXITCODE
-
   if (-not (Test-Path -LiteralPath $Marker)) {
-    if (Test-Path -LiteralPath $Log) { Get-Content -LiteralPath $Log -Tail 80 }
-    throw 'COMSOL batch ended before the completion marker was written'
+    foreach ($file in @($Log, $stdoutLog)) {
+      if (Test-Path -LiteralPath $file) { Get-Content -LiteralPath $file -Tail 60 }
+    }
+    throw "COMSOL batch ended before completion. Inspect $Log and $stdoutLog"
   }
-  if ($batchExitCode -ne 0) {
-    Write-Warning "COMSOL returned $batchExitCode after writing the completion marker. Inspect the log."
-  }
-
-  Write-Host "=== Completed. Results: $Results ==="
+  if ($batchExitCode -ne 0) { Write-Warning "COMSOL returned $batchExitCode after completion; inspect $Log" }
+  Write-Host "Completed. Results: $Results"
   Get-ChildItem -LiteralPath $Results | Select-Object Name, Length | Format-Table -AutoSize
-} finally {
-  Pop-Location
-}
+} finally { Pop-Location }

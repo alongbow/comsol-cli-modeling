@@ -47,6 +47,8 @@ Expand-Template `
 Expand-Template `
   (Join-Path $assets 'run_comsol.ps1.template') `
   (Join-Path $destinationPath 'run_comsol.ps1')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'resolve_comsol.ps1') `
+  -Destination (Join-Path $destinationPath 'resolve_comsol.ps1')
 Copy-Item -LiteralPath (Join-Path $assets 'comsol.prefs.template') `
   -Destination (Join-Path $destinationPath '.comsol-cli-prefs\comsol.prefs')
 Copy-Item -LiteralPath (Join-Path $assets 'project.gitignore.template') `
